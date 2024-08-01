@@ -103,15 +103,15 @@ def _parameter_form_special_agent_ms_azure_addon() -> Dictionary:
                     elements=[
                         MultipleChoiceElement(
                             name="azure_arc_states",
-                            title=Title("Arc Connections"),
+                            title=Title("Azure Arc State"),
                         ),
                         MultipleChoiceElement(
                             name="azure_arc_extensions",
-                            title=Title("Arc Extensions"),
+                            title=Title("Azure Arc Extensions"),
                         ),
                         MultipleChoiceElement(
                             name="azure_vm_extensions",
-                            title=Title("VM Extensions"),
+                            title=Title("Azure VM Extensions"),
                         ),
                     ],
                     custom_validate=[
