@@ -1,0 +1,15 @@
+title: Microsoft Azure AddOn: Arc State
+agents: azure
+catalog: cloud/Microsoft
+license: GPLv2
+distribution: Christopher Pommer
+description:
+ This check monitors the Azure Arc onboarded machine state.
+
+ Depending on the configured service state levels for the available
+ azure arc states, the service is {OK}, {WARN}, {CRIT} or {UNKNOWN}.
+
+ You have to configure the special agent {Microsoft Azure AddOn}.
+
+discovery:
+ One service is created for the Azure Arc state.

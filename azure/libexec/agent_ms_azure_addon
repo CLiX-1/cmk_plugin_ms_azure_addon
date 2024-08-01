@@ -1,0 +1,280 @@
+#!/usr/bin/env python3
+# -*- encoding: utf-8; py-indent-offset: 4 -*-
+
+# Copyright (C) 2024  Christopher Pommer <cp.software@outlook.de>
+
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+
+
+import sys
+import argparse
+import json
+from typing import TypedDict
+from dataclasses import dataclass
+from pathlib import Path
+
+import requests
+
+import cmk.utils.password_store
+
+
+@dataclass(frozen=True)
+class Extension(TypedDict):
+    ExtensionName: str = ""
+    ProvisioningState: str = ""
+
+
+@dataclass(frozen=True)
+class AzureMachineInfo(TypedDict):
+    extensions_exists: int
+    type: str
+    extensions: list[Extension] = ""
+    arc_status: str = ""
+
+
+def parse_arguments() -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--tenant-id",
+        dest="tenant_id",
+        required=True,
+        help="The unique ID from the Microsoft Entra tenant.",
+    )
+    parser.add_argument(
+        "--app-id",
+        dest="app_id",
+        required=True,
+        help="The ID of the Micrsoft Entra app registration for Microsoft Graph API requests.",
+    )
+    parser.add_argument(
+        "--app-secret",
+        dest="app_secret",
+        required=True,
+        help="The client secret from the Microsoft Entra app registration.",
+    )
+    parser.add_argument(
+        "--services-to-monitor",
+        dest="services_to_monitor",
+        required=False,
+        help="Microsoft Azure services that you want to monitor.",
+    )
+    parser.add_argument(
+        "--filter-subscriptions",
+        dest="filter_subscriptions",
+        required=False,
+        help="Filter based on a list of subscription IDs.",
+    )
+    parser.add_argument(
+        "--filter-management-groups",
+        dest="filter_management_groups",
+        required=False,
+        help="Filter based on a list of management group IDs.",
+    )
+
+    return parser.parse_args()
+
+
+def get_access_token(tenant_id: str, app_id: str, app_secret: str, resource_scope: str) -> str:
+    token_url = "https://login.microsoftonline.com/" + tenant_id + "/oauth2/v2.0/token"
+
+    headers = {"Content-Type": "application/x-www-form-urlencoded"}
+
+    body = {
+        "client_id": app_id,
+        "client_secret": app_secret,
+        "grant_type": "client_credentials",
+        "scope": resource_scope,
+    }
+
+    try:
+        api_response = requests.post(token_url, headers=headers, data=body)
+        api_response.raise_for_status()
+    except requests.exceptions.RequestException as err:
+        sys.stderr.write("CRITICAL | Failed to get access token\n")
+        sys.stderr.write(f"Error: {err}\n")
+        sys.exit(1)
+
+    api_response_json = api_response.json()
+    access_token = api_response_json["access_token"]
+
+    return access_token
+
+
+def get_azure_machines(
+    token: str,
+    azure_machines_services: list[str],
+    filter_subscriptions: list[str] = [],
+    filter_management_groups: list[str] = [],
+) -> dict[str, AzureMachineInfo]:
+    azure_machines_url = (
+        "https://management.azure.com/providers/Microsoft.ResourceGraph/resources?api-version=2022-10-01"
+    )
+
+    headers = {"Authorization": "Bearer " + token, "Content-Type": "application/json"}
+
+    if (
+        "azure_arc_extensions" in azure_machines_services or "azure_arc_states" in azure_machines_services
+    ) and "azure_vm_extensions" in azure_machines_services:
+        query = """
+resources
+| where type in ("microsoft.hybridcompute/machines", "microsoft.compute/virtualmachines")
+| project MachineId = tolower(id), MachineName = name, type, ArcState = tostring(properties.status)
+| join kind=leftouter (
+    resources
+    | where type in ("microsoft.hybridcompute/machines/extensions", "microsoft.compute/virtualmachines/extensions")
+    | project MachineId = tolower(substring(id, 0, indexof(id, "/extensions"))), ExtensionName = name,
+    ProvisioningState = tostring(properties.provisioningState)
+) on MachineId
+| where not (type == 'microsoft.compute/virtualmachines' and ExtensionName == '')
+| summarize Extensions = make_list(pack("ExtensionName", ExtensionName, "ProvisioningState", ProvisioningState)),
+ExtensionExists = countif(ExtensionName != "") > 0 by MachineId, MachineName, type, ArcState
+"""
+    elif "azure_arc_extensions" in azure_machines_services:
+        query = """
+resources
+| where type == "microsoft.hybridcompute/machines"
+| project MachineId = tolower(id), MachineName = name, type, ArcState = tostring(properties.status)
+| join kind=leftouter (
+    resources
+    | where type == "microsoft.hybridcompute/machines/extensions"
+    | project MachineId = tolower(substring(id, 0, indexof(id, "/extensions"))), ExtensionName = name,
+    ProvisioningState = tostring(properties.provisioningState)
+) on MachineId
+| summarize Extensions = make_list(pack("ExtensionName", ExtensionName, "ProvisioningState", ProvisioningState)),
+ExtensionExists = countif(ExtensionName != "") > 0 by MachineId, MachineName, type, ArcState
+"""
+    elif "azure_vm_extensions" in azure_machines_services:
+        query = """
+resources
+| where type == "microsoft.compute/virtualmachines"
+| project MachineId = tolower(id), MachineName = name, type
+| join kind=leftouter (
+    resources
+    | where type == "microsoft.compute/virtualmachines/extensions"
+    | project MachineId = tolower(substring(id, 0, indexof(id, "/extensions"))), ExtensionName = name,
+    ProvisioningState = tostring(properties.provisioningState)
+) on MachineId
+| where ExtensionName != ''
+| summarize Extensions = make_list(pack("ExtensionName", ExtensionName, "ProvisioningState", ProvisioningState))
+by MachineId, MachineName, type
+"""
+    else:
+        query = """
+resources
+| where type == "microsoft.hybridcompute/machines"
+| project id, MachineName = name, type, ArcState = tostring(properties.status)
+"""
+
+    body = json.dumps(
+        {"subscriptions": filter_subscriptions, "managementGroups": filter_management_groups, "query": f"{query}"}
+    )
+
+    azure_machines = []
+
+    while True:
+        try:
+            azure_machines_response = requests.post(azure_machines_url, data=body, headers=headers)
+            azure_machines_response.raise_for_status()
+        except requests.exceptions.RequestException as err:
+            sys.stderr.write("CRITICAL | Failed to get azure machines\n")
+            sys.stderr.write(f"Error: {err}\n")
+            sys.exit(2)
+
+        azure_machines_json = azure_machines_response.json()
+        azure_machines.extend(azure_machines_json.get("data", []))
+
+        skip_token = azure_machines_json.get("$skipToken")
+        if skip_token:
+            body = json.dumps(
+                {
+                    "options": {"$skipToken": skip_token},
+                    "subscriptions": filter_subscriptions,
+                    "managementGroups": filter_management_groups,
+                    "query": f"{query}",
+                }
+            )
+        else:
+            break
+
+    azure_machines_dict = {}
+    for machine in azure_machines:
+        azure_machines_dict[machine["MachineName"]] = {
+            "arc_status": machine.get("ArcState", ""),
+            "extensions_exists": machine.get("ExtensionExists"),
+            "extensions": machine.get("Extensions"),
+            "type": machine["type"],
+        }
+
+    return azure_machines_dict
+
+
+def main():
+    args = parse_arguments()
+    tenant_id = args.tenant_id
+    app_id = args.app_id
+    services_to_monitor = args.services_to_monitor.split(",") if args.services_to_monitor else None
+    filter_subscriptions = args.filter_subscriptions.split(",") if args.filter_subscriptions else []
+    filter_management_groups = args.filter_management_groups.split(",") if args.filter_management_groups else []
+
+    pw_id, pw_path = args.app_secret.split(":")
+    app_secret = cmk.utils.password_store.lookup(Path(pw_path), pw_id)
+
+    resource_scope = "https://management.azure.com/.default"
+
+    token = get_access_token(tenant_id, app_id, app_secret, resource_scope)
+
+    azure_machines_services = [
+        service
+        for service in ["azure_arc_states", "azure_arc_extensions", "azure_vm_extensions"]
+        if service in services_to_monitor
+    ]
+
+    if azure_machines_services:
+        azure_machines = get_azure_machines(
+            token,
+            azure_machines_services,
+            filter_subscriptions,
+            filter_management_groups,
+        )
+
+        if "azure_arc_states" in services_to_monitor:
+            for server, info in azure_machines.items():
+                if info["type"] == "microsoft.hybridcompute/machines":
+                    print(f"<<<<{server}>>>>")
+                    print("<<<ms_azure_arc_state:sep(0)>>>")
+                    print(info["arc_status"])
+
+        if "azure_arc_extensions" in services_to_monitor and "azure_vm_extensions" in services_to_monitor:
+            for server, info in azure_machines.items():
+                if info["extensions_exists"] == 1:
+                    print(f"<<<<{server}>>>>")
+                    print("<<<ms_azure_machine_extension:sep(0)>>>")
+                    print(json.dumps(info))
+        elif "azure_arc_extensions" in services_to_monitor:
+            for server, info in azure_machines.items():
+                if info["extensions_exists"] == 1:
+                    print(f"<<<<{server}>>>>")
+                    print("<<<ms_azure_machine_extension:sep(0)>>>")
+                    print(json.dumps(info))
+        elif "azure_vm_extensions" in services_to_monitor:
+            for server, info in azure_machines.items():
+                if info["type"] == "microsoft.compute/virtualmachines":
+                    print(f"<<<<{server}>>>>")
+                    print("<<<ms_azure_machine_extension:sep(0)>>>")
+                    print(json.dumps(info))
+
+
+if __name__ == "__main__":
+    main()
