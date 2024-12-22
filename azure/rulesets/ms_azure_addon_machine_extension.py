@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# -*- encoding: utf-8; py-indent-offset: 4 -*-
+# -*- coding: utf-8; py-indent-offset: 4; max-line-length: 100 -*-
 
 # Copyright (C) 2024  Christopher Pommer <cp.software@outlook.de>
 
@@ -18,6 +18,11 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 
+####################################################################################################
+# Checkmk ruleset to set the severity levels for the provisioning states of Microsoft Azure machine
+# extensions. This ruleset is part of the Microsoft Azure AddOn special agent (ms_azure_addon).
+
+
 from cmk.rulesets.v1 import Help, Title
 from cmk.rulesets.v1.form_specs import DefaultValue, DictElement, Dictionary, ServiceState
 from cmk.rulesets.v1.rule_specs import CheckParameters, HostCondition, Topic
@@ -28,7 +33,8 @@ def _parameter_form_ms_azure_machine_extension() -> Dictionary:
         title=Title("Microsoft Azure Machine Extension"),
         help_text=Help(
             "Check parameters for the Microsoft Azure machine extension. "
-            "To use this service, you need to set up the <b>Microsoft Azure AddOn</b> special agent."
+            "To use this service, you need to set up the <b>Microsoft Azure AddOn</b> special "
+            "agent."
         ),
         elements={
             "succeeded": DictElement(

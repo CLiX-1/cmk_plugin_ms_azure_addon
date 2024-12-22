@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# -*- encoding: utf-8; py-indent-offset: 4 -*-
+# -*- coding: utf-8; py-indent-offset: 4; max-line-length: 100 -*-
 
 # Copyright (C) 2024  Christopher Pommer <cp.software@outlook.de>
 
@@ -17,6 +17,16 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
+
+####################################################################################################
+# Checkmk check plugin for monitoring the Azure Arc state.
+# The plugin works with data from the Microsoft Azure AddOn special agent (ms_azure_addon).
+
+# Example data from special agent:
+# <<<ms_azure_arc_state:sep(0)>>>
+# Connected
+
+
 from typing import Any, Mapping
 
 from cmk.agent_based.v2 import (
@@ -32,10 +42,6 @@ from cmk.agent_based.v2 import (
 
 Section = str
 
-# Example data from special agent:
-# <<<ms_azure_arc_state:sep(0)>>>
-# Connected
-
 
 def parse_ms_azure_arc_state(string_table: StringTable) -> Section:
     return string_table[0][0]
@@ -48,7 +54,9 @@ def discover_ms_azure_arc_state(section: Section) -> DiscoveryResult:
 def check_ms_azure_arc_state(params: Mapping[str, Any], section: Section) -> CheckResult:
     state = section.lower()
 
-    if state in ["connected", "disconnected", "error", "expired"]:
+    valid_states = {"connected", "disconnected", "error", "expired"}
+
+    if state in valid_states:
         yield Result(
             state=State(params[state]),
             summary=f"State: {section}",

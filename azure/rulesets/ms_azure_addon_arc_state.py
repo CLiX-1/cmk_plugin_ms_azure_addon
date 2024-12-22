@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# -*- encoding: utf-8; py-indent-offset: 4 -*-
+# -*- coding: utf-8; py-indent-offset: 4; max-line-length: 100 -*-
 
 # Copyright (C) 2024  Christopher Pommer <cp.software@outlook.de>
 
@@ -18,6 +18,11 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 
+####################################################################################################
+# Checkmk ruleset to set the severity levels for the Microsoft Azure Arc State.
+# This ruleset is part of the Microsoft Azure AddOn special agent (ms_azure_addon).
+
+
 from cmk.rulesets.v1 import Help, Title
 from cmk.rulesets.v1.form_specs import DefaultValue, DictElement, Dictionary, ServiceState
 from cmk.rulesets.v1.rule_specs import CheckParameters, HostCondition, Topic
@@ -28,14 +33,16 @@ def _parameter_form_ms_azure_arc_state() -> Dictionary:
         title=Title("Microsoft Azure Arc State"),
         help_text=Help(
             "Check parameters for the Microsoft Azure Arc State. "
-            "To use this service, you need to set up the <b>Microsoft Azure AddOn</b> special agent."
+            "To use this service, you need to set up the <b>Microsoft Azure AddOn</b> special "
+            "agent."
         ),
         elements={
             "connected": DictElement(
                 parameter_form=ServiceState(
                     title=Title("State connected"),
                     help_text=Help(
-                        "Set the severity level of the state <i>connected</i>. The default severity level is ok."
+                        "Set the severity level of the state <i>connected</i>. The default "
+                        "severity level is ok."
                     ),
                     prefill=DefaultValue(0),
                 ),
@@ -54,7 +61,8 @@ def _parameter_form_ms_azure_arc_state() -> Dictionary:
                 parameter_form=ServiceState(
                     title=Title("State error"),
                     help_text=Help(
-                        "Set the severity level of the state <i>error</i>. The default severity level is critical."
+                        "Set the severity level of the state <i>error</i>. The default "
+                        "severity level is critical."
                     ),
                     prefill=DefaultValue(2),
                 ),
@@ -63,7 +71,8 @@ def _parameter_form_ms_azure_arc_state() -> Dictionary:
                 parameter_form=ServiceState(
                     title=Title("State expired"),
                     help_text=Help(
-                        "Set the severity level of the state <i>expired</i>. The default severity level is unknown."
+                        "Set the severity level of the state <i>expired</i>. The default "
+                        "severity level is unknown."
                     ),
                     prefill=DefaultValue(3),
                 ),
