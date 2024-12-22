@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# -*- encoding: utf-8; py-indent-offset: 4 -*-
+# -*- coding: utf-8; py-indent-offset: 4; max-line-length: 100 -*-
 
 # Copyright (C) 2024  Christopher Pommer <cp.software@outlook.de>
 
@@ -18,6 +18,10 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 
+####################################################################################################
+# Checkmk ruleset to configure the Microsoft Azure AddOn special agent.
+
+
 from cmk.rulesets.v1 import Help, Message, Title
 from cmk.rulesets.v1.form_specs import (
     CascadingSingleChoice,
@@ -26,13 +30,17 @@ from cmk.rulesets.v1.form_specs import (
     DictElement,
     Dictionary,
     FieldSize,
+    InputHint,
     List,
     MultipleChoice,
     MultipleChoiceElement,
     Password,
+    Proxy,
     String,
+    TimeMagnitude,
+    TimeSpan,
 )
-from cmk.rulesets.v1.form_specs.validators import LengthInRange, MatchRegex
+from cmk.rulesets.v1.form_specs.validators import LengthInRange, MatchRegex, NumberInRange
 from cmk.rulesets.v1.rule_specs import SpecialAgent, Topic
 
 
@@ -56,12 +64,17 @@ def _parameter_form_special_agent_ms_azure_addon() -> Dictionary:
                     field_size=FieldSize.LARGE,
                     custom_validate=[
                         MatchRegex(
-                            regex="^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
-                            error_msg=Message("Tenant ID / Directory ID must be in 36-character GUID format."),
+                            regex="^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+                            "[0-9a-fA-F]{12}$",
+                            error_msg=Message(
+                                "Tenant ID / Directory ID must be in 36-character GUID format."
+                            ),
                         ),
                         LengthInRange(
                             min_value=36,
-                            error_msg=Message("Tenant ID / Directory ID must be in 36-character GUID format."),
+                            error_msg=Message(
+                                "Tenant ID / Directory ID must be in 36-character GUID format."
+                            ),
                         ),
                     ],
                 ),
@@ -70,16 +83,24 @@ def _parameter_form_special_agent_ms_azure_addon() -> Dictionary:
             "app_id": DictElement(
                 parameter_form=String(
                     title=Title("Client ID / Application ID"),
-                    help_text=Help("The ID of the Micrsoft Entra app registration for Microsoft Graph API requests."),
+                    help_text=Help(
+                        "The App ID of the Micrsoft Entra app registration for Microsoft Graph API "
+                        "requests."
+                    ),
                     field_size=FieldSize.LARGE,
                     custom_validate=[
                         MatchRegex(
-                            regex="^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
-                            error_msg=Message("Client ID / Application ID must be in 36-character GUID format."),
+                            regex="^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+                            "[0-9a-fA-F]{12}$",
+                            error_msg=Message(
+                                "Client ID / Application ID must be in 36-character GUID format."
+                            ),
                         ),
                         LengthInRange(
                             min_value=36,
-                            error_msg=Message("Client ID / Application ID must be in 36-character GUID format."),
+                            error_msg=Message(
+                                "Client ID / Application ID must be in 36-character GUID format."
+                            ),
                         ),
                     ],
                 ),
@@ -91,6 +112,15 @@ def _parameter_form_special_agent_ms_azure_addon() -> Dictionary:
                     help_text=Help("The client secret from the Microsoft Entra app registration."),
                 ),
                 required=True,
+            ),
+            "proxy": DictElement(
+                parameter_form=Proxy(
+                    title=Title("HTTP proxy"),
+                    help_text=Help(
+                        "The HTTP proxy used to connect to the Microsoft Graph API. If not set, "
+                        "the environment settings will be used."
+                    ),
+                ),
             ),
             "services_to_monitor": DictElement(
                 parameter_form=MultipleChoice(
@@ -117,7 +147,9 @@ def _parameter_form_special_agent_ms_azure_addon() -> Dictionary:
                     custom_validate=[
                         LengthInRange(
                             min_value=1,
-                            error_msg=Message("Select one or more <b>Microsoft Azure services to monitor</b>"),
+                            error_msg=Message(
+                                "Select one or more <b>Microsoft Azure services to monitor</b>"
+                            ),
                         ),
                     ],
                     prefill=DefaultValue(
@@ -134,8 +166,9 @@ def _parameter_form_special_agent_ms_azure_addon() -> Dictionary:
                 parameter_form=CascadingSingleChoice(
                     title=Title("Filter by"),
                     help_text=Help(
-                        "Set a filter based on subscription IDs or management group IDs. "
-                        "Only selected <b>Microsoft Azure services to monitor</b> of these will be queried."
+                        "Set a filter based on subscription IDs or management group IDs. Only "
+                        "selected <b>Microsoft Azure services to monitor</b> of these will be "
+                        "queried."
                     ),
                     elements=[
                         CascadingSingleChoiceElement(
@@ -154,6 +187,25 @@ def _parameter_form_special_agent_ms_azure_addon() -> Dictionary:
                         ),
                     ],
                     prefill=DefaultValue("filter_subscriptions"),
+                ),
+            ),
+            "timeout": DictElement(
+                parameter_form=TimeSpan(
+                    title=Title("Timeout for each API request"),
+                    help_text=Help(
+                        "Define a custom timeout in seconds to use for each API request. The "
+                        "timeout is used for token request and any service that should be "
+                        "monitored. The default timeout is 10s."
+                    ),
+                    displayed_magnitudes=[TimeMagnitude.SECOND],
+                    prefill=InputHint(10.0),
+                    custom_validate=[
+                        NumberInRange(
+                            min_value=3,
+                            max_value=600,
+                            error_msg=Message("The timeout must be between 3s and 600s."),
+                        ),
+                    ],
                 ),
             ),
         },
