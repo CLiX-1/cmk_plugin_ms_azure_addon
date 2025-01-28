@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8; py-indent-offset: 4; max-line-length: 100 -*-
 
-# Copyright (C) 2025  Christopher Pommer <cp.software@outlook.de>
+# Copyright (C) 2024, 2025  Christopher Pommer <cp.software@outlook.de>
 
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -115,13 +115,10 @@ def check_ms_azure_machine_extension(params: Mapping[str, Any], section: Section
         extension_not_ok_list.append(extension_summary)
         extension_list.append(f"{extension_name} ({extension_state})")
 
-    result_summary = f"Extensions: {', '.join(sorted(extension_not_ok_list))}"
-    result_details = "\n".join(sorted(extension_list))
-
     yield Result(
         state=State.worst(*state_values),
-        summary=f"{result_summary}",
-        details=f"{result_details}",
+        summary=f"Extensions: {', '.join(sorted(extension_not_ok_list))}",
+        details="\n".join(sorted(extension_list)),
     )
 
 
